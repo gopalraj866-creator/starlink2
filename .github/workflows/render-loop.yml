@@ -1,7 +1,7 @@
 name: Render Starlink 3D loop
 
 # Renders the Three.js scene frame-by-frame (software WebGL, no GPU) into a seamless
-# MP4 loop (~2 min) and publishes it as a release asset. Takes ~20-30 minutes.
+# MP4 loop (~2 min) and publishes it as a release asset. Takes ~1-1.5 hours.
 on:
   workflow_dispatch:
     inputs:
@@ -15,7 +15,7 @@ permissions:
 jobs:
   render:
     runs-on: ubuntu-latest
-    timeout-minutes: 150
+    timeout-minutes: 240
     steps:
       - uses: actions/checkout@v4
       - name: Install
