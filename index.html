@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Starlink Constellation – Live 3D</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+  :root { --ink:#eef3ff; --dim:#8fa6d8; --blue:#4a90ff; --panel:rgba(6,10,20,.82); --line:#2a3550; }
+  * { box-sizing:border-box; }
+  html,body { margin:0; width:100%; height:100%; background:#000; overflow:hidden;
+    font-family:"DejaVu Sans","Segoe UI",system-ui,sans-serif; color:var(--ink); }
+  canvas#gl { position:fixed; inset:0; width:100vw; height:100vh; display:block; }
+  .hud { position:fixed; pointer-events:none; }
+  #title { left:2.2vw; top:3.4vh; }
+  #title h1 { margin:0; font-size:2.3vw; letter-spacing:.04em; font-weight:800; text-shadow:0 0 12px #000; }
+  #title h2 { margin:.6vh 0 2.4vh; font-size:1.35vw; font-weight:700; text-shadow:0 0 12px #000; }
+  .stat { display:flex; align-items:center; gap:.9vw; margin-bottom:2.1vh; text-shadow:0 0 10px #000; }
+  .stat i { width:1.3vw; height:1.3vw; border:2px solid #9db6e8; border-radius:50%; position:relative; flex:none; }
+  .stat i:after { content:""; position:absolute; inset:28%; background:#9db6e8; border-radius:50%; }
+  .stat small { display:block; color:var(--dim); font-size:1.0vw; }
+  .stat b { font-size:1.15vw; }
+  #legend { left:1.8vw; bottom:3vh; width:16vw; background:var(--panel); border:1px solid var(--line);
+    border-radius:8px; padding:1.4vh 1.1vw; font-size:.9vw; }
+  #legend div { display:flex; align-items:center; gap:.8vw; margin:.9vh 0; }
+  #legend span.d { width:.7vw; height:.7vw; border-radius:50%; display:inline-block; }
+  #legend span.l { width:1.2vw; height:2px; background:var(--blue); display:inline-block; }
+  #legend span.ds { width:1.2vw; border-top:1px dashed #8793ad; display:inline-block; }
+  #live { right:1.8vw; bottom:3vh; width:23vw; background:var(--panel); border:1px solid var(--line);
+    border-radius:8px; font-size:1vw; }
+  #live .hd { display:flex; justify-content:space-between; align-items:center; padding:1.2vh 1vw;
+    border-bottom:1px solid var(--line); }
+  #live .hd b { color:#ff4d4d; font-size:1.3vw; display:flex; align-items:center; gap:.6vw; }
+  #live .hd b:before { content:""; width:1vw; height:1vw; background:#ff3b30; border-radius:50%;
+    animation:pulse 1.4s infinite; }
+  @keyframes pulse { 50% { opacity:.35; } }
+  #live .row { display:flex; justify-content:space-between; padding:1.1vh 1vw; }
+  #live .row b { font-weight:700; }
+  #shot { right:2.2vw; top:3.6vh; text-align:right; text-shadow:0 0 10px #000; }
+  #shot .k { font-size:.85vw; color:var(--dim); letter-spacing:.3em; }
+  #shot .n { font-size:1.5vw; font-weight:800; letter-spacing:.12em; }
+  #ticker { left:50%; bottom:2.6vh; transform:translateX(-50%); width:40vw; text-align:center;
+    background:rgba(6,10,20,.72); border-radius:10px; padding:1vh 1vw; font-size:1.05vw; }
+  #ticker b { color:#ffd25a; margin-right:.6vw; }
+  .tag { position:fixed; pointer-events:none; font-size:.95vw; white-space:nowrap; transform:translate(10px,-50%);
+    text-shadow:0 0 8px #000; display:none; }
+  .tag b { display:block; }
+  .tag.sat { color:#ffe08a; border-left:2px solid #ffd25a; padding:.4vh .6vw; background:rgba(6,10,20,.75); }
+  .tag.sat:before { content:""; position:absolute; left:-14px; top:50%; width:20px; height:20px; margin-top:-10px;
+    border:2px solid #ffd25a; border-radius:50%; transform:translateX(-4px); animation:ring 1s infinite; }
+  @keyframes ring { 50% { transform:translateX(-4px) scale(1.5); opacity:.4; } }
+  .tag.body { color:#cfe0ff; }
+  .tag.body span { color:#6aa6ff; }
+</style>
+</head>
+<body>
+<canvas id="gl"></canvas>
+
+<div class="hud" id="title">
+  <h1>STARLINK CONSTELLATION</h1>
+  <h2>~10,000 SATELLITES · LIVE 3D SIMULATION</h2>
+  <div class="stat"><i></i><div><small>Total Satellites</small><b>10,000 (approx.)</b></div></div>
+  <div class="stat"><i></i><div><small>Active (approx.)</small><b>7,000+</b></div></div>
+  <div class="stat"><i></i><div><small>Orbital Altitude</small><b>~550 km (LEO)</b></div></div>
+  <div class="stat"><i></i><div><small>Orbital Planes</small><b>~72</b></div></div>
+  <div class="stat"><i></i><div><small>Inclination</small><b>~53°</b></div></div>
+</div>
+
+<div class="hud" id="shot"><div class="k">CAMERA</div><div class="n" id="shotName">ORBITAL VIEW</div></div>
+
+<div class="hud" id="legend">
+  <div><span class="d" style="background:#fff"></span>Starlink Satellite (active)</div>
+  <div><span class="d" style="background:#3c82ff"></span>Starlink Satellite (inactive)</div>
+  <div><span class="l"></span>Orbital Path</div>
+  <div><span class="ds"></span>Moon Orbit</div>
+</div>
+
+<div class="hud" id="live">
+  <div class="hd"><b>LIVE</b><span id="clock">UTC —</span></div>
+  <div class="row"><span>Satellites in View</span><b id="inview">—</b></div>
+  <div class="row"><span>Orbital Speed (avg.)</span><b>~ 7.6 km/s</b></div>
+  <div class="row"><span>Altitude Range</span><b>~ 540 – 570 km</b></div>
+</div>
+
+<div class="hud" id="ticker"><b>DID YOU KNOW?</b><span id="fact"></span></div>
+
+<div class="tag sat" id="satTag"><b id="satName">STARLINK</b><span id="satInfo"></span></div>
+<div class="tag body" id="earthTag"><b>EARTH</b></div>
+<div class="tag body" id="moonTag"><b>MOON</b><span id="moonDist">384,400 km</span></div>
+
+<script type="importmap">{ "imports": { "three": "./vendor/three.module.min.js" } }</script>
+<script type="module" src="./main.js"></script>
+</body>
+</html>
