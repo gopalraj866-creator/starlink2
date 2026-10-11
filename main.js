@@ -275,44 +275,65 @@ function satPos(i, simT, out = _p) {
 // ---------------------------------------------------------------------------
 const V = (x = 0, y = 0, z = 0) => new THREE.Vector3(x, y, z);
 const ease = (t) => { t = Math.min(Math.max(t, 0), 1); return t * t * (3 - 2 * t); };
-const CHASE = [101, 3333, 6200, 8100, 9500];
-let chaseIdx = CHASE[0];
+const D2R = Math.PI / 180;
+const earthRot = (simT) => simT * (Math.PI * 2 / 86164) - 3.78;
+const SUN_AZ = Math.atan2(SUN_DIR.z, SUN_DIR.x);
+const CH = [101, 1234, 3333, 4567, 6200, 7001, 8100, 8800, 9500, 2345, 5678, 9900];
 
-const SHOTS = [
-  { name: "ORBITAL VIEW", dur: 30, pose: (t) => {
-      const az = 0.6 + t * 0.045, el = 0.38 + 0.12 * Math.sin(t * 0.12), d = 21 - 1.2 * Math.sin(t * 0.1);
-      return { pos: V(Math.cos(az) * Math.cos(el) * d, Math.sin(el) * d, Math.sin(az) * Math.cos(el) * d), look: V(), fov: 50 };
-  } },
-  { name: "SATELLITE CHASE CAM", dur: 26, pose: (t, simT) => {
-      const p = satPos(chaseIdx, simT, V()), p2 = satPos(chaseIdx, simT + 4, V());
-      const vel = p2.clone().sub(p).normalize(), up = p.clone().normalize();
-      const pos = p.clone().addScaledVector(vel, -0.75).addScaledVector(up, 0.32).addScaledVector(up.clone().cross(vel).normalize(), 0.18 * Math.sin(t * 0.3));
-      return { pos, look: p.clone().addScaledVector(vel, 2.5), fov: 62 };
-  } },
-  { name: "EARTH – MOON (REAL SCALE)", dur: 36, pose: (t, simT) => {
-      const m = moonPos(simT), mid = m.clone().multiplyScalar(0.5);
-      const k = ease(t / 15) * (1 - ease((t - 23) / 13));
-      const side = V(-m.z, 0, m.x).normalize();
-      const nearPos = V(17, 7, 15);
-      const farPos = mid.clone().addScaledVector(side, 600).add(V(0, 110, 0));
-      return { pos: nearPos.clone().lerp(farPos, k), look: mid.clone().multiplyScalar(k), fov: 50 };
-  } },
-  { name: "LOW ORBIT FLYBY", dur: 26, pose: (t, simT) => {
-      const ang = t * 0.11 + 1.0, r = R_E + 2.6 + 0.4 * Math.sin(t * 0.4);
-      const tilt = THREE.MathUtils.degToRad(40);
-      const pos = V(Math.cos(ang) * r, Math.sin(ang) * r * Math.sin(tilt), Math.sin(ang) * r * Math.cos(tilt));
-      const ahead = ang + 0.16;
-      const look = V(Math.cos(ahead) * (R_E + 0.2), Math.sin(ahead) * (R_E + 0.2) * Math.sin(tilt), Math.sin(ahead) * (R_E + 0.2) * Math.cos(tilt));
-      return { pos, look, fov: 68 };
-  } },
-];
+const orbitPose = (az, el, d) => ({ pos: V(Math.cos(az) * Math.cos(el) * d, Math.sin(el) * d, Math.sin(az) * Math.cos(el) * d), look: V(), fov: 50 });
+const dayShot = (name, off, el, dist, dur) => ({ type: "orbit", name, dur, pose: (t) =>
+  orbitPose(SUN_AZ + off + t * 0.03, el + 0.1 * Math.sin(t * 0.13), dist - 1.3 * Math.sin(t * 0.1)) });
+const nightShot = (off, dur) => ({ type: "orbit", name: "NIGHT SIDE · CITY LIGHTS", dur, pose: (t) =>
+  orbitPose(SUN_AZ + Math.PI + off + t * 0.03, 0.22 + 0.1 * Math.sin(t * 0.11), 18 - 1.0 * Math.sin(t * 0.1)) });
+const polarShot = (dur, flip) => ({ type: "orbit", name: "POLAR VIEW", dur, pose: (t) =>
+  orbitPose(SUN_AZ + 0.4 + t * 0.05, (flip ? -1 : 1) * (1.12 + 0.05 * Math.sin(t * 0.1)), 19) });
+const chaseShot = (idx, dur, side) => ({ type: "chase", name: "SATELLITE CHASE CAM", dur, idx, pose: (t, simT) => {
+  const p = satPos(idx, simT, V()), p2 = satPos(idx, simT + 4, V());
+  const vel = p2.clone().sub(p).normalize(), up = p.clone().normalize(), rt = up.clone().cross(vel).normalize();
+  const pos = p.clone().addScaledVector(vel, -0.75).addScaledVector(up, 0.32).addScaledVector(rt, side * 0.35 + 0.18 * Math.sin(t * 0.3));
+  return { pos, look: p.clone().addScaledVector(vel, 2.5), fov: 62 };
+} });
+const moonShot = (dur) => ({ type: "moon", name: "EARTH – MOON (REAL SCALE)", dur, pose: (t, simT) => {
+  const m = moonPos(simT), mid = m.clone().multiplyScalar(0.5);
+  const k = ease(t / (dur * 0.42)) * (1 - ease((t - dur * 0.64) / (dur * 0.36)));
+  const side = V(-m.z, 0, m.x).normalize();
+  const farPos = mid.clone().addScaledVector(side, 600).add(V(0, 110, 0));
+  return { pos: V(17, 7, 15).lerp(farPos, k), look: mid.clone().multiplyScalar(k), fov: 50 };
+} });
+const flybyShot = (tiltDeg, node, speed, dur) => ({ type: "flyby", name: "LOW ORBIT FLYBY", dur, pose: (t) => {
+  const tilt = tiltDeg * D2R, ang = t * speed + 1.0, r = R_E + 2.6 + 0.4 * Math.sin(t * 0.4);
+  const at = (a, rr) => V(Math.cos(a) * rr, Math.sin(a) * rr * Math.sin(tilt), Math.sin(a) * rr * Math.cos(tilt)).applyAxisAngle(V(0, 1, 0), node);
+  return { pos: at(ang, r), look: at(ang + 0.16, R_E + 0.2), fov: 68 };
+} });
+
+// Build the ~15 minute programme from a repeating pattern with varied parameters
+const SHOTS = [];
+{
+  const TARGET = 900;
+  let sum = 0, c = 0;
+  while (sum < TARGET - 20) {
+    const cyc = [
+      dayShot("ORBITAL VIEW", [0.3, -0.7, 0.9, -0.2][c % 4], [0.38, 0.15, 0.5, 0.28][c % 4], [21, 16, 24, 19][c % 4], 36),
+      chaseShot(CH[(c * 3) % CH.length], 28, c % 2 ? -1 : 1),
+      flybyShot([40, 70, 20, 55][c % 4], c * 1.3, 0.11, 28),
+      nightShot(c * 0.5 - 0.3, 34),
+      c % 2 === 0 ? moonShot(40) : dayShot("DAY SIDE", -0.4 + c * 0.2, 0.2, 14.5, 34),
+      chaseShot(CH[(c * 3 + 1) % CH.length], 28, c % 2 ? 1 : -1),
+      polarShot(32, c % 2 === 1),
+      flybyShot([30, 62, 48, 25][c % 4], c * 2.1 + 0.7, 0.12, 28),
+    ];
+    for (const sh of cyc) { if (sum >= TARGET - 20) break; SHOTS.push(sh); sum += sh.dur; }
+    c++;
+  }
+  SHOTS[SHOTS.length - 1].dur += TARGET - sum;     // land exactly on 15:00
+}
 const TOTAL = SHOTS.reduce((a, s) => a + s.dur, 0);
 const BLEND = 4;
 const camPose = { pos: V(), look: V(), fov: 50 };
+let chaseIdx = CH[0];
 function directCamera(T, simT) {
   let t = T % TOTAL, k = 0;
   while (t >= SHOTS[k].dur) { t -= SHOTS[k].dur; k++; }
-  if (k === 1 && t < 0.05) chaseIdx = CHASE[Math.floor(T / TOTAL) % CHASE.length];
   const cur = SHOTS[k].pose(t, simT);
   let pos = cur.pos, look = cur.look, fov = cur.fov;
   if (t < BLEND) {
@@ -326,7 +347,8 @@ function directCamera(T, simT) {
   camera.lookAt(look);
   camera.updateMatrixWorld(true);
   if (Math.abs(camera.fov - fov) > 0.01) { camera.fov = fov; camera.updateProjectionMatrix(); }
-  return { k, t, name: SHOTS[k].name };
+  if (SHOTS[k].type === "chase") chaseIdx = SHOTS[k].idx;
+  return { k, t, name: SHOTS[k].name, type: SHOTS[k].type };
 }
 
 
@@ -366,6 +388,16 @@ const FACTS = [
   "Orbit heights here are exaggerated so the shells are visible",
   "Lower orbit means lower latency: internet from space in ~30 ms",
   "Earth-Moon scene is shown at true distance and size",
+  "Starlink satellites have solar panels and use lasers to link to each other in space",
+  "A Starlink satellite weighs roughly 300-800 kg depending on the version",
+  "Falcon 9 first stages land and are reused - cutting the cost of each launch",
+  "Satellites are visible as a bright 'train' shortly after each launch",
+  "Starlink dishes find satellites automatically as they cross the sky every few minutes",
+  "At 550 km, a satellite sees about 1,000 km of ground in every direction",
+  "Every Starlink satellite is built to be deorbited at the end of its life",
+  "City lights on the night side are real - captured by satellites from space",
+  "The Earth turns once every ~24 hours - 1,670 km/h at the equator",
+  "Low Earth Orbit begins about 160 km up and extends to ~2,000 km",
 ];
 let lastShot = "", factIdx = -1;
 function projectTag(el, world, show = true) {
@@ -413,8 +445,8 @@ function updateHud(T, simT, shot, frame) {
   // highlighted satellite tag (orbital + chase shots)
   const cyc = Math.floor(T / 10);
   if (cyc !== hiCycle) { hiCycle = cyc; hiIdx = Math.floor(((cyc * 2654435761) >>> 0) % N); }
-  const showSat = shot.k === 0 || shot.k === 1 || shot.k === 3;
-  const idx = shot.k === 1 ? chaseIdx : hiIdx;
+  const showSat = shot.type !== "moon";
+  const idx = shot.type === "chase" ? chaseIdx : hiIdx;
   satPos(idx, simT, _p);
   const facing = _p.dot(camera.position) > R_E * R_E * 0.98;
   if (showSat && facing && projectTag($("satTag"), _p.clone())) {
@@ -423,7 +455,7 @@ function updateHud(T, simT, shot, frame) {
     $("satInfo").textContent = "Alt " + Math.round(Math.min(570, Math.max(540, alt))) + " km | 7.6 km/s";
   } else $("satTag").style.display = "none";
   // Earth/Moon labels in the real-scale shot
-  const far = shot.k === 2 && camera.position.length() > 120;
+  const far = shot.type === "moon" && camera.position.length() > 120;
   projectTag($("earthTag"), V(0, R_E * 1.8, 0), far);
   const mp = moonPos(simT);
   projectTag($("moonTag"), mp.clone().add(V(0, R_MOON * 2, 0)), far);
