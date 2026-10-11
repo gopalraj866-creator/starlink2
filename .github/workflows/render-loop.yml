@@ -1,0 +1,38 @@
+name: Render Starlink 3D loop
+
+# Renders the Three.js scene frame-by-frame (software WebGL, no GPU) into a seamless
+# MP4 loop (~2 min) and publishes it as a release asset. Takes ~20-30 minutes.
+on:
+  workflow_dispatch:
+    inputs:
+      quality:
+        description: "three.js quality (high = clouds + smoother globe, low = faster)"
+        default: "high"
+
+permissions:
+  contents: write
+
+jobs:
+  render:
+    runs-on: ubuntu-latest
+    timeout-minutes: 150
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y ffmpeg fonts-dejavu-core
+          pip install playwright
+          playwright install --with-deps chromium
+      - name: Render loop
+        run: python render_loop.py --out starlink_loop.mp4 --quality "${{ github.event.inputs.quality || 'high' }}"
+      - name: Publish to release "starlink-loop"
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view starlink-loop >/dev/null 2>&1 || gh release create starlink-loop --title "Starlink loop" --notes "Pre-rendered 3D loop"
+          gh release upload starlink-loop starlink_loop.mp4 --clobber
+      - uses: actions/upload-artifact@v4
+        with:
+          name: starlink_loop
+          path: starlink_loop.mp4
