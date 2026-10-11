@@ -32,4 +32,4 @@ jobs:
         env:
           RTMP_URL: ${{ secrets.YOUTUBE_RTMP_URL }}
           AUDIO_URL: ${{ secrets.AUDIO_URL }}     # optional looped background audio
-        run: timeout 20400 ./stream_loop.sh starlink_loop.mp4 || [ $? -eq 124 ]
+        run: timeout 20400 bash ./stream_loop.sh starlink_loop.mp4 || [ $? -eq 124 ]
