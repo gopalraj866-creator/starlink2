@@ -22,7 +22,7 @@ async def main():
     ap.add_argument("--seconds", type=float, default=0, help="0 = one full camera cycle")
     ap.add_argument("--width", type=int, default=1280)
     ap.add_argument("--height", type=int, default=720)
-    ap.add_argument("--bitrate", default="3500k")
+    ap.add_argument("--bitrate", default="3000k")
     ap.add_argument("--quality", default="low", help="three.js quality: high|low")
     args = ap.parse_args()
 
